@@ -659,30 +659,48 @@ public static class ChatServerPatch
         int faceoffTick = GetPhaseDurationTick(GamePhase.FaceOff, 4);
         int playTick = GetPhaseDurationTick(GamePhase.Play, 300);
 
+        // StandardGameMode.OnFaceOffEnded reads its protected `tickRemainder` field to seed the
+        // Play phase tick. That field is only populated by OnPreGameStarted, which the natural
+        // Warmup → PreGame → FaceOff flow runs. Since /start jumps straight to FaceOff, we must
+        // seed it ourselves — otherwise Play starts with tick=0 and the OnGameStateChanged guard
+        // (Phase changed && Tick==0) immediately fires OnPlayEnded, jumping to Intermission.
+        TrySetTickRemainder(playTick);
+
         // Reset period/scores/overtime so this is a true game start, then go to FaceOff.
         gm.Server_SetGameState(GamePhase.FaceOff, faceoffTick, new int?(1), new int?(0), new int?(0), new bool?(false));
         gm.Server_StartTicking();
-
-        // StandardGameMode.OnFaceOffEnded uses its protected `tickRemainder` field to seed the
-        // Play phase, but that field is only populated by OnPreGameStarted (which we skipped).
-        // Without this, Play would start with a stale tick (usually 0) — overwrite after FaceOff ends.
-        gm.StartCoroutine(SetPlayTickAfterFaceoff(gm, playTick));
 
         Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has started the game");
         return false;
     }
 
-    private static System.Collections.IEnumerator SetPlayTickAfterFaceoff(GameManager gm, int playTick)
+    private static bool TrySetTickRemainder(int playTick)
     {
-        while (gm != null && gm.GameState.Value.Phase == GamePhase.FaceOff)
+        try
         {
-            yield return new WaitForSeconds(0.25f);
+            var gameModeManager = GameModeManager.Instance;
+            if (gameModeManager == null) return false;
+
+            var selectedGameModeField = typeof(GameModeManager).GetField("selectedGameMode", BindingFlags.Instance | BindingFlags.NonPublic);
+            var selectedGameMode = selectedGameModeField?.GetValue(gameModeManager);
+            if (selectedGameMode == null) return false;
+
+            // tickRemainder is declared on StandardGameMode<TConfig> — walk up the type chain
+            // since reflection on a generic base requires the closed type the field actually lives on.
+            for (var t = selectedGameMode.GetType(); t != null; t = t.BaseType)
+            {
+                var field = t.GetField("tickRemainder", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (field != null)
+                {
+                    field.SetValue(selectedGameMode, playTick);
+                    return true;
+                }
+            }
+            return false;
         }
-        yield return new WaitForSeconds(0.1f);
-        if (gm == null) yield break;
-        if (gm.GameState.Value.Phase == GamePhase.Play)
+        catch
         {
-            gm.Server_SetGameState(null, new int?(playTick), null, null, null, null);
+            return false;
         }
     }
 
