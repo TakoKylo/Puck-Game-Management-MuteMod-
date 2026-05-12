@@ -319,7 +319,9 @@ public static class ChatServerPatch
                 cmd == "/faceoff" || cmd == "/fo" ||
                 cmd == "/settime" || cmd == "/st" ||
                 cmd == "/setgoals" || cmd == "/sg" ||
-                cmd == "/setstate" || cmd == "/ss";
+                cmd == "/setstate" || cmd == "/ss" ||
+                cmd == "/warmup" || cmd == "/start" ||
+                cmd == "/pause" || cmd == "/resume";
 
             if (!adminCmd) return true;
 
@@ -469,6 +471,10 @@ public static class ChatServerPatch
                     "\n/unfreezeall" +
                     "\n/pauseall" +
                     "\n/resumeall" +
+                    "\n/warmup [seconds]" +
+                    "\n/start" +
+                    "\n/pause" +
+                    "\n/resume" +
                     "\n/faceoff" +
                     "\n/kicksteamid <steamid>" +
                     "\n/slap <player>" +
@@ -603,7 +609,87 @@ public static class ChatServerPatch
             return HandleFaceoff(ui, clientId, senderSteam, isAdmin, isMod);
         }
 
+        // Admin-only game flow commands
+        if (cmd == "/warmup" || cmd == "/start" || cmd == "/pause" || cmd == "/resume")
+        {
+            if (!isAdmin)
+            {
+                SendPrivate(ui, clientId, WHITE + B + "Admin only." + EB + EC);
+                return false;
+            }
+
+            if (cmd == "/warmup") return HandleWarmup(ui, clientId, senderSteam, arg1);
+            if (cmd == "/start") return HandleStart(ui, clientId, senderSteam);
+            if (cmd == "/pause") return HandlePauseTimer(ui, clientId, senderSteam);
+            if (cmd == "/resume") return HandleResumeTimer(ui, clientId, senderSteam);
+        }
+
         return true;
+    }
+
+    private static bool HandleWarmup(ChatManager ui, ulong clientId, ulong senderSteam, string arg1)
+    {
+        var gm = GameManager.Instance;
+        if (gm == null)
+        {
+            SendPrivate(ui, clientId, WHITE + "GameManager not found." + EC);
+            return false;
+        }
+
+        int warmupTick = GetPhaseDurationTick(GamePhase.Warmup, 30);
+        if (!string.IsNullOrEmpty(arg1) && int.TryParse(arg1, out int customSeconds) && customSeconds > 0)
+            warmupTick = customSeconds;
+
+        gm.Server_SetGameState(GamePhase.Warmup, warmupTick, new int?(1), new int?(0), new int?(0), new bool?(false));
+        gm.Server_StartTicking();
+
+        Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has started warmup (" + warmupTick + "s)");
+        return false;
+    }
+
+    private static bool HandleStart(ChatManager ui, ulong clientId, ulong senderSteam)
+    {
+        var gm = GameManager.Instance;
+        if (gm == null)
+        {
+            SendPrivate(ui, clientId, WHITE + "GameManager not found." + EC);
+            return false;
+        }
+
+        int faceoffTick = GetPhaseDurationTick(GamePhase.FaceOff, 4);
+        gm.Server_SetGameState(GamePhase.FaceOff, faceoffTick, null, null, null, null);
+        gm.Server_StartTicking();
+
+        Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has started the game");
+        return false;
+    }
+
+    private static bool HandlePauseTimer(ChatManager ui, ulong clientId, ulong senderSteam)
+    {
+        var gm = GameManager.Instance;
+        if (gm == null)
+        {
+            SendPrivate(ui, clientId, WHITE + "GameManager not found." + EC);
+            return false;
+        }
+
+        gm.Server_StopTicking();
+        Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has paused the timer");
+        return false;
+    }
+
+    private static bool HandleResumeTimer(ChatManager ui, ulong clientId, ulong senderSteam)
+    {
+        var gm = GameManager.Instance;
+        if (gm == null)
+        {
+            SendPrivate(ui, clientId, WHITE + "GameManager not found." + EC);
+            return false;
+        }
+
+        gm.Server_StartTicking();
+        Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has resumed the timer");
+        return false;
     }
 
     private static bool HandleModKick(ChatManager ui, ulong clientId, ulong senderSteam, string arg1)

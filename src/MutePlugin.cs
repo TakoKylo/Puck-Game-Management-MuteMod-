@@ -12,7 +12,7 @@ using Newtonsoft.Json;
 using Unity.Netcode;
 using UnityEngine;
 
-public class PlayerMutePlugin : IPuckMod
+public class PlayerMutePlugin : IPuckPlugin
 {
     public static PlayerMutePlugin Instance { get; private set; }
     private Harmony harmony;
