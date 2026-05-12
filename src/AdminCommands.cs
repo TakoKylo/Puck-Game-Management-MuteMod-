@@ -657,11 +657,33 @@ public static class ChatServerPatch
         }
 
         int faceoffTick = GetPhaseDurationTick(GamePhase.FaceOff, 4);
-        gm.Server_SetGameState(GamePhase.FaceOff, faceoffTick, null, null, null, null);
+        int playTick = GetPhaseDurationTick(GamePhase.Play, 300);
+
+        // Reset period/scores/overtime so this is a true game start, then go to FaceOff.
+        gm.Server_SetGameState(GamePhase.FaceOff, faceoffTick, new int?(1), new int?(0), new int?(0), new bool?(false));
         gm.Server_StartTicking();
+
+        // StandardGameMode.OnFaceOffEnded uses its protected `tickRemainder` field to seed the
+        // Play phase, but that field is only populated by OnPreGameStarted (which we skipped).
+        // Without this, Play would start with a stale tick (usually 0) — overwrite after FaceOff ends.
+        gm.StartCoroutine(SetPlayTickAfterFaceoff(gm, playTick));
 
         Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has started the game");
         return false;
+    }
+
+    private static System.Collections.IEnumerator SetPlayTickAfterFaceoff(GameManager gm, int playTick)
+    {
+        while (gm != null && gm.GameState.Value.Phase == GamePhase.FaceOff)
+        {
+            yield return new WaitForSeconds(0.25f);
+        }
+        yield return new WaitForSeconds(0.1f);
+        if (gm == null) yield break;
+        if (gm.GameState.Value.Phase == GamePhase.Play)
+        {
+            gm.Server_SetGameState(null, new int?(playTick), null, null, null, null);
+        }
     }
 
     private static bool HandlePauseTimer(ChatManager ui, ulong clientId, ulong senderSteam)
