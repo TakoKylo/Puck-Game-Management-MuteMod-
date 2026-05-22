@@ -128,7 +128,7 @@ public static class PlayerBodySpawnPatch
                     ui.Server_SendChatMessage(
                         "<color=#FF9500FF><b>SYSTEM</b></color> <color=#FFFFFF>You are still frozen. Returning to frozen position.</color>",
                         null,
-                        clientId
+                        new ulong[] { clientId }
                     );
                 }
             }
