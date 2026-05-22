@@ -101,7 +101,7 @@ public static class ChatServerPatch
             }
 
             if (pending.ClientIds != null && pending.ClientIds.Length > 0)
-                ui.Server_SendChatMessageToClients(pending.Message, pending.ClientIds);
+                ui.Server_SendChatMessage(pending.Message, pending.ClientIds);
         }
     }
 
@@ -154,36 +154,26 @@ public static class ChatServerPatch
         }
     }
 
-    private static object FindPlayerBodyComponent(Player p)
+    private static PlayerBody FindPlayerBodyComponent(Player p)
     {
         if (p == null) return null;
-
-        var prop = p.GetType().GetProperty("PlayerBody", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        if (prop != null)
-        {
-            var body = prop.GetValue(p, null);
-            if (body != null) return body;
-        }
-
-        foreach (var comp in p.GetComponentsInChildren<Component>(true))
-        {
-            var tn = comp.GetType().Name;
-            if (tn == "PlayerBody" || tn.Contains("PlayerBody"))
-                return comp;
-        }
-
-        return null;
+        return p.PlayerBody != null ? p.PlayerBody : p.GetComponentInChildren<PlayerBody>(true);
     }
 
-    private static bool TryCallFreezeOnBody(object body, bool freeze)
+    private static bool TryCallFreezeOnBody(PlayerBody body, bool freeze)
     {
         if (body == null) return false;
-        var t = body.GetType();
-        var mi = t.GetMethod(freeze ? "Server_Freeze" : "Server_Unfreeze",
-                             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        if (mi == null) return false;
-        mi.Invoke(body, null);
-        return true;
+        try
+        {
+            if (freeze) body.Server_Freeze();
+            else body.Server_Unfreeze();
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[MuteMod] Freeze/Unfreeze on body failed: " + e);
+            return false;
+        }
     }
 
     private static bool TryFreezePlayer(Player p, bool freeze)

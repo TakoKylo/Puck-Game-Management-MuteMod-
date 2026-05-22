@@ -53,14 +53,28 @@ public static class PlayerBodySpawnPatch
         try
         {
             if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
-            
+
+            // b897: PlayerBody.Player is now a field set by the PlayerReference change
+            // handler, which the removed ProcessInitialNetworkVariableValues used to
+            // trigger here on spawn. Fall back to resolving the Player from PlayerReference
+            // directly so the re-freeze path still runs.
             var player = __instance.Player;
+            if (player == null)
+            {
+                try
+                {
+                    if (__instance.PlayerReference.Value.TryGet(out var no) && no != null)
+                        player = no.GetComponent<Player>();
+                }
+                catch { }
+            }
+
             if (player == null)
             {
                 Debug.Log($"[MuteMod] PlayerBodySpawnPatch: Player is null on body");
                 return;
             }
-            
+
             ulong steamId = PlayerHelpers.GetSteamIdFromPlayer(player);
             Debug.Log($"[MuteMod] PlayerBodySpawnPatch: Body spawned for steamId {steamId}, frozen count: {PlayerMutePlugin.FrozenPlayers.Count}");
             
@@ -111,9 +125,10 @@ public static class PlayerBodySpawnPatch
                 if (player != null)
                 {
                     var clientId = player.OwnerClientId;
-                    ui.Server_SendChatMessageToClients(
+                    ui.Server_SendChatMessage(
                         "<color=#FF9500FF><b>SYSTEM</b></color> <color=#FFFFFF>You are still frozen. Returning to frozen position.</color>",
-                        new ulong[] { clientId }
+                        null,
+                        clientId
                     );
                 }
             }
