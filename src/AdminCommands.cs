@@ -310,7 +310,6 @@ public static class ChatServerPatch
                 cmd == "/settime" || cmd == "/st" ||
                 cmd == "/setgoals" || cmd == "/sg" ||
                 cmd == "/setstate" || cmd == "/ss" ||
-                cmd == "/warmup" || cmd == "/start" ||
                 cmd == "/pause" || cmd == "/resume";
 
             if (!adminCmd) return true;
@@ -461,8 +460,6 @@ public static class ChatServerPatch
                     "\n/unfreezeall" +
                     "\n/pauseall" +
                     "\n/resumeall" +
-                    "\n/warmup [seconds]" +
-                    "\n/start" +
                     "\n/pause" +
                     "\n/resume" +
                     "\n/faceoff" +
@@ -599,8 +596,11 @@ public static class ChatServerPatch
             return HandleFaceoff(ui, clientId, senderSteam, isAdmin, isMod);
         }
 
-        // Admin-only game flow commands
-        if (cmd == "/warmup" || cmd == "/start" || cmd == "/pause" || cmd == "/resume")
+        // Admin-only game flow commands.
+        // NOTE: /warmup and /start are handled natively by the base game (B1149+), which admin-gates
+        // them via admin_steam_ids.json / AdminLevel, so MuteMod no longer intercepts them — they now
+        // fall through to the game's own handlers. /pause and /resume remain MuteMod-handled.
+        if (cmd == "/pause" || cmd == "/resume")
         {
             if (!isAdmin)
             {
@@ -608,56 +608,11 @@ public static class ChatServerPatch
                 return false;
             }
 
-            if (cmd == "/warmup") return HandleWarmup(ui, clientId, senderSteam, arg1);
-            if (cmd == "/start") return HandleStart(ui, clientId, senderSteam);
             if (cmd == "/pause") return HandlePauseTimer(ui, clientId, senderSteam);
             if (cmd == "/resume") return HandleResumeTimer(ui, clientId, senderSteam);
         }
 
         return true;
-    }
-
-    private static bool HandleWarmup(ChatManager ui, ulong clientId, ulong senderSteam, string arg1)
-    {
-        var gm = GameManager.Instance;
-        if (gm == null)
-        {
-            SendPrivate(ui, clientId, WHITE + "GameManager not found." + EC);
-            return false;
-        }
-
-        int warmupTick = GetPhaseDurationTick(GamePhase.Warmup, 30);
-        if (!string.IsNullOrEmpty(arg1) && int.TryParse(arg1, out int customSeconds) && customSeconds > 0)
-            warmupTick = customSeconds;
-
-        gm.Server_SetGameState(GamePhase.Warmup, warmupTick, new int?(1), new int?(0), new int?(0), new bool?(false));
-        gm.Server_StartTicking();
-
-        Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has started warmup (" + warmupTick + "s)");
-        return false;
-    }
-
-    private static bool HandleStart(ChatManager ui, ulong clientId, ulong senderSteam)
-    {
-        var gm = GameManager.Instance;
-        if (gm == null)
-        {
-            SendPrivate(ui, clientId, WHITE + "GameManager not found." + EC);
-            return false;
-        }
-
-        int pregameTick = GetPhaseDurationTick(GamePhase.PreGame, 10);
-
-        // Start the game by entering PreGame (the position-select phase), mirroring the game's own
-        // /votestart which calls StandardGameMode.StartGame(GamePhase.PreGame). The natural
-        // PreGame → FaceOff → Play flow then runs, and OnPreGameStarted seeds the game mode's
-        // protected `tickRemainder` (= Play duration) for us — no reflection hack needed. Reset
-        // period/scores/overtime so this is a true game start.
-        gm.Server_SetGameState(GamePhase.PreGame, pregameTick, new int?(1), new int?(0), new int?(0), new bool?(false));
-        gm.Server_StartTicking();
-
-        Broadcast(ui, ORANGE + B + "ADMIN" + EB + EC + WHITE + " has started the game");
-        return false;
     }
 
     private static bool HandlePauseTimer(ChatManager ui, ulong clientId, ulong senderSteam)
